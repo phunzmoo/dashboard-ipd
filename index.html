@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KPI Dashboard — งานผู้ป่วยใน | โรงพยาบาลพระนครศรีอยุธยา</title>
+
+  <!-- ฟอนต์ภาษาไทย -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- CDN Libraries — ไม่ต้อง npm install -->
+  <!-- Chart.js 4.4.1 สำหรับกราฟทุกประเภท -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- SheetJS สำหรับอ่านไฟล์ Excel ที่อัพโหลด -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- ข้อมูล KPI ฝังอยู่ในไฟล์นี้ (ทำงานได้บน GitHub Pages โดยไม่ต้อง fetch) -->
+  <script src="data/embedded_data.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <p class="loading-text">กำลังโหลดข้อมูล...</p>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💊</div>
+        <div>
+          <div class="logo-title">KPI Dashboard</div>
+          <div class="logo-sub">งานผู้ป่วยใน</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-section="overview" href="#">
+        <span class="nav-icon">📊</span>
+        <span>ภาพรวม KPI</span>
+      </a>
+      <a class="nav-item" data-section="ops" href="#">
+        <span class="nav-icon">🏥</span>
+        <span>ภาพรวมงาน IPD</span>
+      </a>
+      <a class="nav-item" data-section="med_error" href="#">
+        <span class="nav-icon">⚠️</span>
+        <span>Medication Error</span>
+      </a>
+      <a class="nav-item" data-section="rx_subtypes" href="#">
+        <span class="nav-icon">📋</span>
+        <span>Rx Error ตามประเภท</span>
+      </a>
+      <a class="nav-item" data-section="adr" href="#">
+        <span class="nav-icon">🔬</span>
+        <span>ADR & การแพ้ยา</span>
+      </a>
+      <a class="nav-item" data-section="pharmcare" href="#">
+        <span class="nav-icon">💙</span>
+        <span>Pharmcare</span>
+      </a>
+      <a class="nav-item" data-section="med_rec" href="#">
+        <span class="nav-icon">🔄</span>
+        <span>Med Reconciliation</span>
+      </a>
+      <a class="nav-item" data-section="counseling" href="#">
+        <span class="nav-icon">🎓</span>
+        <span>การสอนใช้ยา</span>
+      </a>
+      <a class="nav-item" data-section="iv_events" href="#">
+        <span class="nav-icon">🩸</span>
+        <span>IV Adverse Events</span>
+      </a>
+      <a class="nav-item" data-section="table" href="#">
+        <span class="nav-icon">📑</span>
+        <span>ตารางข้อมูลทั้งหมด</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <!-- อัพโหลดไฟล์ Excel เพื่ออัพเดทข้อมูล (ทำงานใน browser ล้วน) -->
+      <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none">
+      <button class="upload-btn" onclick="document.getElementById('file-input').click()">
+        📁 อัพโหลดข้อมูลใหม่
+      </button>
+      <p class="upload-hint">รองรับไฟล์ .xlsx (ข้อมูลอยู่ใน session นี้)</p>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menu-toggle" aria-label="เปิด/ปิดเมนู">☰</button>
+        <div>
+          <h1 class="page-title" id="page-title">ภาพรวม KPI งานผู้ป่วยใน</h1>
+          <p class="page-subtitle">โรงพยาบาลพระนครศรีอยุธยา | กลุ่มงานเภสัชกรรม</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="filter-group">
+          <label class="filter-label">ช่วงเดือน</label>
+          <div class="filter-row">
+            <select id="month-from" class="filter-select" aria-label="เดือนเริ่มต้น"></select>
+            <span class="filter-sep">ถึง</span>
+            <select id="month-to" class="filter-select" aria-label="เดือนสิ้นสุด"></select>
+          </div>
+        </div>
+        <button class="btn-apply" id="btn-apply">ดูข้อมูล</button>
+      </div>
+    </header>
+
+    <!-- Sidebar backdrop (mobile) -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- Content Area -->
+    <div class="content-area" id="content-area">
+
+      <!-- ===== OVERVIEW SECTION ===== -->
+      <section class="section" id="section-overview">
+        <div class="cards-grid" id="summary-cards"></div>
+        <div class="charts-2col" id="overview-charts"></div>
+      </section>
+
+      <!-- ===== OPS SECTION ===== -->
+      <section class="section hidden" id="section-ops">
+        <div class="section-header-row">
+          <h2 class="section-title">🏥 ภาพรวมงาน IPD</h2>
+        </div>
+        <div class="metric-select-row">
+          <label class="filter-label">เลือกตัวชี้วัด:</label>
+          <div class="metric-chips" id="ops-chips"></div>
+        </div>
+        <div class="chart-full"><canvas id="chart-ops"></canvas></div>
+        <div class="charts-2col" id="ops-charts-2"></div>
+      </section>
+
+      <!-- ===== MED ERROR SECTION ===== -->
+      <section class="section hidden" id="section-med_error">
+        <div class="section-header-row">
+          <h2 class="section-title">⚠️ Medication Error</h2>
+        </div>
+        <div class="cards-mini" id="med-error-cards"></div>
+        <div class="chart-full"><canvas id="chart-med-error-trend"></canvas></div>
+        <div class="charts-2col" id="med-error-charts-2"></div>
+      </section>
+
+      <!-- ===== RX SUBTYPES SECTION ===== -->
+      <section class="section hidden" id="section-rx_subtypes">
+        <div class="section-header-row">
+          <h2 class="section-title">📋 Prescription Error แยกประเภท</h2>
+        </div>
+        <div class="chart-full" style="height:380px"><canvas id="chart-rx-bar"></canvas></div>
+        <div class="charts-2col" id="rx-subtype-charts"></div>
+      </section>
+
+      <!-- ===== ADR SECTION ===== -->
+      <section class="section hidden" id="section-adr">
+        <div class="section-header-row">
+          <h2 class="section-title">🔬 ADR & การแพ้ยา</h2>
+        </div>
+        <div class="cards-mini" id="adr-cards"></div>
+        <div class="chart-full"><canvas id="chart-adr-trend"></canvas></div>
+        <div class="charts-2col" id="adr-charts-2"></div>
+      </section>
+
+      <!-- ===== PHARMCARE SECTION ===== -->
+      <section class="section hidden" id="section-pharmcare">
+        <div class="section-header-row">
+          <h2 class="section-title">💙 Pharmcare / บริบาลเภสัชกรรม</h2>
+        </div>
+        <div class="cards-mini" id="pharmcare-cards"></div>
+        <div class="chart-full"><canvas id="chart-pharmcare-trend"></canvas></div>
+        <div class="charts-2col" id="pharmcare-charts-2"></div>
+      </section>
+
+      <!-- ===== MED REC SECTION ===== -->
+      <section class="section hidden" id="section-med_rec">
+        <div class="section-header-row">
+          <h2 class="section-title">🔄 Medication Reconciliation</h2>
+        </div>
+        <div class="cards-mini" id="med-rec-cards"></div>
+        <div class="chart-full"><canvas id="chart-med-rec-trend"></canvas></div>
+        <div class="charts-2col" id="med-rec-charts-2"></div>
+      </section>
+
+      <!-- ===== COUNSELING SECTION ===== -->
+      <section class="section hidden" id="section-counseling">
+        <div class="section-header-row">
+          <h2 class="section-title">🎓 การสอนใช้ยา / Counseling</h2>
+        </div>
+        <div class="cards-mini" id="counseling-cards"></div>
+        <div class="chart-full"><canvas id="chart-counseling-trend"></canvas></div>
+      </section>
+
+      <!-- ===== IV EVENTS SECTION ===== -->
+      <section class="section hidden" id="section-iv_events">
+        <div class="section-header-row">
+          <h2 class="section-title">🩸 IV Adverse Events</h2>
+        </div>
+        <div class="cards-mini" id="iv-cards"></div>
+        <div class="chart-full"><canvas id="chart-iv-trend"></canvas></div>
+        <div class="charts-2col" id="iv-charts-2"></div>
+      </section>
+
+      <!-- ===== TABLE SECTION ===== -->
+      <section class="section hidden" id="section-table">
+        <div class="section-header-row">
+          <h2 class="section-title">📑 ตารางข้อมูลทั้งหมด</h2>
+          <div class="table-controls">
+            <input type="search" id="table-search" class="table-search" placeholder="🔍 ค้นหาตัวชี้วัด...">
+            <select id="table-section-filter" class="filter-select">
+              <option value="">ทุกหมวด</option>
+            </select>
+            <button class="btn-export" id="btn-export">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrapper" id="table-container"></div>
+      </section>
+
+    </div><!-- end content-area -->
+  </main>
+
+  <!-- Main Script — ต้องโหลดหลัง embedded_data.js -->
+  <script src="script.js"></script>
+</body>
+</html>
